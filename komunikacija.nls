@@ -1,0 +1,134 @@
+;;; Komunikacija za viseagentske sustave
+;;; Funkcije za stvaranje i razmjenu poruka izmedju agenata.
+
+
+;;; Zahtjevi
+;;; 1) Svi agenti koji imaju mogućnost komunikacije MORAJU imati svojstvo "dolazece-poruke".
+;;; U navedenu varijablu se spremaju sve poruku. Tako da za svaku vrstu agenata u vasem modelu
+;;; kojoj zelite omoguciti komunikaciju, morate imati deklaraciju VRSTA-own [dolazece-poruke] zajedno 
+;;; sa bilo kojim drugim varijablama koje zelite dodati agentu
+;;; Na pocetku simulacije postavite vrijednosta varijable na przanu listu ([])
+;;; 2) Model bi trebao imati "switch" element za odabri prikaza poruka - "prikazi-poruke"
+
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;; KOMUNIKACIJA
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;; OBRADA PORUKA ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Slanje poruka
+;; Ako jedan agent salje poruku drugi je mora primiti
+
+to posalji [poruka]
+  let primatelji dohvati-primatelje poruka
+  let prim 0
+  foreach primatelji [
+   set prim turtle (read-from-string ?)
+   if prim != nobody [without-interruption [ask prim [primi poruka]]] ;; read-from-string is required to convert the string to number
+  ]
+end
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; Primanje poruka se radi putem osvjezavanja liste poruka
+to primi [poruka]
+   if prikazi-poruke [show poruka]
+   set ulazne-poruke lput poruka ulazne-poruke
+end 
+
+;; Ova funkcija dohvaca sljedecu poruku i brise je iz liste
+to-report dohvati-poruku
+  if empty? ulazne-poruke [report "nema poruka"]
+  let iduca first ulazne-poruke
+  izbrisi-poruku
+  report iduca     
+end 
+
+;; Ova funkcija vraca iducu poruku koja je na redu ali je ne uklanja iz liste
+to-report dohvati-poruku-ne-brisi
+  if empty? ulazne-poruke [report "nema poruka"]
+  report first ulazne-poruke
+end
+
+;; Eksplicitno uklanjanje poruka
+to izbrisi-poruku
+  set ulazne-poruke but-first ulazne-poruke
+end 
+
+;; slanje svim agentima odredjene vrste
+to posalji-svim [vrsta-ag poruka]
+  foreach [who] of vrsta-ag [
+     posalji dodaj-primatelja ? poruka    
+  ]
+end 
+
+
+;; Stvaranje poruka i dodavanje posiljatelja
+to-report stvori-poruku [vrsta]
+ report (list vrsta (word "posiljatelj:" who) ) 
+end 
+
+to-report stvori-odgovor [vrsta poruka]
+ let odgovor 0    
+ set odgovor stvori-poruku vrsta
+ set odgovor dodaj-primatelja (dohvati-posiljatelja poruka) odgovor
+ report odgovor
+end 
+
+
+;; Dohvacanje informacija iz poruka
+;; Dohvati posiljatelja poruke
+to-report dohvati-posiljatelja [poruka]
+  report remove "posiljatelj:" first (filter [not is-number? ? and member? "posiljatelj:" ?] poruka) 
+  ;;report item ((position "posiljatelj:" poruka) + 1) poruka 
+end
+
+;; Vraca sadrzaj poruke
+to-report dohvati-sadrzaj [poruka]
+  report item (position "sadrzaj:" poruka + 1) poruka 
+end
+
+;; Dohvaca listu primatelja
+to-report dohvati-primatelje [poruka]
+  report map [remove "primatelj:" ?] filter [not is-number? ? and member? "primatelj:" ?] poruka
+end 
+
+;; Dohvaca vrstu poruke 
+to-report dohvati-vrstu [poruka]
+  report first poruka
+end 
+
+;;; DODAVANJE POLJA U PORUKU
+;; Dodavanje posiljatelja
+to-report dodaj-posiljatelja [posiljatelj poruka]
+  report dodaj poruka "posiljatelj:" posiljatelj
+end
+
+;; Dodavanje primatelja
+to-report dodaj-primatelja [primatelj poruka]
+  report dodaj poruka "primatelj:" primatelj
+end
+
+;; Dodavanje vise primatelja
+to-report dodaj-vise-primatelja [primatelji poruka]
+  foreach primatelji
+  [
+    set poruka dodaj-primatelja ? poruka
+  ]
+  report poruka
+end
+
+;; Dodavanje sadrzaja poruci
+to-report dodaj-sadrzaj [sadrzaj poruka]
+  report dodaj poruka "sadrzaj:" sadrzaj
+end
+
+;; Naredba "dodaj"
+to-report dodaj [poruka polje vrijednost]
+  ifelse polje = "sadrzaj:"
+  [report lput vrijednost lput polje poruka]
+  [report lput (word polje vrijednost) poruka]
+end  

@@ -1,0 +1,158 @@
+;;; BDI arhitektura za Netlogo simulacije 
+;;; Sadržu procedure za upravljenje uvjerenjima te upravljanje i izvršavanje namjera
+
+;;; Zahtjevi
+;;; 1) Prilikom izrade simulacije koja koristi navedenu biblioteku, SVI agenti moraju imati dvije vlastite 
+;;; varijbale – „uvjerenja“ i „namjere“. To su varijable u koje se spremaju uvjerenja i namjere svakog 
+;;; pojedinog agenta. Dakle, ako u modelu postoji vrsta agenata koja je modelirana kao „BDI agent“ 
+;;; potrebno je definirati da naveden vrsta posjeduje te dvije varijable ( naredba „vrsta-own [uvjerenja namjere]“ ).
+;;; Prilikom postavljanja početnih vrijednosti inicijalizirajte navedene varijable kao praznu listu ( [ ] ).
+;;; 2) Simulacija bi trebala podržavati odbrojavanje „tick“-ova da se mogu implementirati funkcije sa odbrojavanjem
+;;; 3) Simulacija bi trebala sadržavati „switch“ element pod nazivom „prikazi-namjere“. 
+;;; Ovo je potrebno da unutar simulacije možemo prikazati namjere svakog agenta.
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;; UVJERENJA
+;; Uvjerenja su samo podaci koje spremamo u liste.
+;; Ovdje su navedene korisne procedure za upravljanje uvjerenjima
+
+;;; stvara novo uvjerenje (ne dodaje ga u memoriju uvjerenja)
+to-report stvori-uvjerenje [tip sadrzaj]
+  report (list tip sadrzaj)
+end 
+
+;;; vraca tip uvjerenja
+to-report tip-uvjerenja [uvj]
+  report first uvj
+end
+
+;; vraca sadrzaj uvjerenja
+to-report sadrzaj-uvjerenja [uvj]
+  report item 1 uvj
+end
+
+;; dodavanje uvjerenja u listu uvjerenja
+to dodaj-uvjerenje [uvj]
+  if member? uvj uvjerenja [stop]
+  set uvjerenja fput uvj uvjerenja 
+end 
+;; uklanjanje uvjerenja iz liste uvjerenja
+to ukloni-uvjerenje [uvj]
+ set uvjerenja remove uvj uvjerenja 
+end 
+ 
+;;; vraca true ako odredjeno uvjerenje pripada postojecem skupu uvjerenja
+to-report postoji-uvjerenje [uvj]
+   ifelse member? uvj uvjerenja [report true] [report false]
+end
+
+;;; vraca true ako postoji uvjerenje u obliku [ tip-uvj itd. itd. itd.] u listi uvjerenja
+to-report postoji-uvjerenje-tipa [tip-uvj]
+  let uvje filter [first ? = tip-uvj] uvjerenja
+  ifelse empty? uvje [report false] [report true]
+end
+
+;;; vraca sva uvjerenja odredjenog tipa
+to-report uvjerenja-tipa [tip-uvj]
+  report filter [first ? = tip-uvj] uvjerenja
+end
+
+;;; dohvaca prvo uvjerenje tog tipa i uklanja ga
+to-report dohvati-uvjerenje [tip-uvj]
+  ifelse postoji-uvjerenje-tipa tip-uvj 
+  [let uvj first filter [first ? = tip-uvj] uvjerenja
+   ukloni-uvjerenje uvj
+   report uvj
+  ]
+  [report false]
+end
+
+;;;dohvaca prvo uvjerenje tog tipa bez da ga uklanja
+to-report prvo-uvjerenje-tipa [tip-uvj]
+   report first uvjerenja-tipa tip-uvj
+end 
+
+;;; osvjezava uvjerenja
+to osvjezi-uvjerenje [uvj]
+   ukloni-uvjerenje prvo-uvjerenje-tipa tip-uvjerenja uvj
+   dodaj-uvjerenje uvj
+end
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;; METODE ZA UPRAVALJNJE NAMJERAMA
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+to izvrsi-namjere
+  if empty? namjere [stop]
+  let moja-nam dohvati-namjeru
+  run ime-namjere moja-nam
+  if runresult namjera-izvrsena moja-nam [ukloni-namjeru moja-nam]
+  if prikazi-namjere [set label namjere] ;; za provjeru
+end 
+
+;;;; Funkcije za pristup namjerama
+
+;; dohvaca trenutnu namjeru agenta
+to-report trenutna-namjera
+  report ime-namjere first namjere  
+end 
+
+;; vraca punu strukturu namjere
+to-report dohvati-namjeru
+  report first namjere
+end 
+
+;; vraca ime namjere
+to-report ime-namjere [namjera]
+  report item 0 namjera
+end
+
+;; vraca argument da li je namjera izvrsena - ako dobije true
+;; onda se namjera brise
+
+to-report namjera-izvrsena [namjera]
+  report item 1 namjera
+end 
+
+to pop-intention 
+  set namjere but-first namjere
+end
+
+;; Uklanja određenu namjeru iz liste namjera 
+to ukloni-namjeru [namjera]
+  set namjere remove-item (position namjera namjere) namjere
+end 
+
+
+;; Dodaje namjeru u listu namjera. 
+;; Namjere se stavljaju u STOG
+;; Prvi argument je ime namjere koje bi trebalo biti neka izvrsna procedura koju implementiramo u Netlogu
+;; Drugi argument je REPORTER koji kada vrati TRUE uklanja evaluiranu namjeru (ili izvršenu ili odbačenu)
+;; OBA ARGUMENTA MORAJU BITI TIPA STRING
+
+
+to dodaj-namjeru [ime izvrsena]
+  set namjere fput (list ime izvrsena) namjere
+end 
+ 
+;;;; POSEBNE AKCIJA
+;;; nulta-akcija
+to cekaj
+end 
+
+;;; cekaj dok ne istekne brojac
+to cekaj-brojac
+  cekaj
+end 
+
+;;;
+to-report brojac [vrijeme]
+report (word "brojac-istekao " ticks " " vrijeme) 
+end
+
+;;; INTERNO - nije za koristenje
+;;; vraca kada brojac istekne. 
+to-report brojac-istekao [start interval]
+  report (start + interval < ticks )
+end
