@@ -1,6 +1,7 @@
 
 __includes ["komunikacija.nls" "bdi-agent.nls"]
-globals [put-istrazivaca put-transportera put-graditelja]
+
+
 
 breed [ stabla stablo]
 breed [ciljevi cilj]
@@ -9,11 +10,12 @@ breed [graditelji graditelj]
 breed [istrazivaci istrazivac]
 breed [baze baza]
 
-graditelji-own [uvjerenja namjere ulazne-poruke teret lista-stabala stanje]
-baze-own [uvjerenja namjere ulazne-poruke lista-stabala lista-baterija buffer]
-transporteri-own [uvjerenja namjere ulazne-poruke stanje target]
-istrazivaci-own [uvjerenja namjere ulazne-poruke]
+graditelji-own [uvjerenja namjere ulazne-poruke stanje teret koord-mosta narucilac]
+istrazivaci-own [uvjerenja namjere ulazne-poruke stanje imam-transportera]
+transporteri-own [uvjerenja namjere ulazne-poruke stanje teret imam-graditelja]
+baze-own [uvjerenja namjere ulazne-poruke lista-stabala koord-mostova]
 
+globals [mostovi baterije broj-ciljeva]
 patches-own [otok]
 
 ;;; Postavljanje okruzenja
@@ -28,11 +30,8 @@ to postavi
   postavi-transportere
   postavi-graditelje
   postavi-istrazivace
-  ask one-of baze [popunu-listu-graditelja]
-  set put-istrazivaca 0
-  set put-transportera 0
-  set put-graditelja 0
-
+  set mostovi []
+  set baterije []
 end
 
 ;;; Stvaranje prepreka u okruzenju
@@ -56,6 +55,7 @@ to postavi-otok
       set pcolor blue
       set otok 1
     ]    
+    set broj-ciljeva br-ciljeva
   ]  
   
 end
@@ -64,14 +64,13 @@ to postavi-baze
   create-baze 1 [
     set shape "triangle 2"
     set color red
-    setxy 0 0    
+    setxy 20 20   
     set lista-stabala []
     set uvjerenja []
     set namjere []
-    set ulazne-poruke []  
-    set buffer []
+    set ulazne-poruke [] 
+    set koord-mostova [[0 0]]
   ]
-  
 end
 
 to postavi-transportere
@@ -80,11 +79,12 @@ to postavi-transportere
     rand-koordinate
     set shape "transporter"
     set color red
-    set target []
-    set stanje "slobodan"
     set uvjerenja []
     set namjere []
-    set ulazne-poruke []    
+    set ulazne-poruke [] 
+    set stanje "slobodan"
+    set teret 0
+    set imam-graditelja 0
   ]
 end
 
@@ -93,12 +93,13 @@ to postavi-graditelje
     set shape "graditelj"
     set color red
     rand-koordinate 
-    set teret 0
-    set stanje "slobodan"
-    set lista-stabala []
     set uvjerenja []
     set namjere []
-    set ulazne-poruke []
+    set ulazne-poruke [] 
+    set stanje "slobodan"
+    set teret 0
+    set koord-mosta 0
+    set narucilac 0
   ]
 end
 
@@ -108,13 +109,10 @@ to postavi-istrazivace
     set color red
     rand-koordinate  
     set uvjerenja []
-    set namjere []
-    set ulazne-poruke [] 
+    set namjere [["pretrazivanje" "false"]]
+    set ulazne-poruke []
+    set imam-transportera 0
   ]
-end
-
-to popunu-listu-graditelja
-  trazi-slobodnog-graditelja
 end
 
 
@@ -124,146 +122,243 @@ end
 
 ;;;; Pokretanje simulacije
 to pokreni
+  if broj-ciljeva = 0 [stop]
   ask istrazivaci [ponasanje-istrazivaca]
-  ask baze [ponasanje-baze]
   ask transporteri [ponasanje-transportera]
   ask graditelji [ponasanje-graditelji]
+  ask baze [ponasanje-baze]
   tick
 end
 
 
-
-
-;;;;;;;;;;;;;;;;;;;;;;; PONASANJA AGENATA ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-;;;; ISTRAZIVAC
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;; ISTRAZIVAC 
 
 to ponasanje-istrazivaca
-  pokret-nasumicno "istrazivac"
+  izvrsi-namjere-provjera
+  osluskuj-poruke-is
+end
+
+to pretrazivanje
   trazi-stabla
   trazi-baterije
+  pokret-nasumicno
 end
 
 to trazi-stabla
   if any? stabla in-radius 2 [posalji-koord-stabla-bazi [list xcor ycor] of stabla in-radius 2]
 end
 
+to posalji-koord-stabla-bazi [poruka]
+  ask baze [
+    foreach poruka [set lista-stabala fput item 0 poruka lista-stabala]
+    set lista-stabala remove-duplicates lista-stabala
+    ]
+end
+
 to trazi-baterije
-  ; ako pronadje baterije u radiusu 2 salje upit svim transporterima da li su slobodni i oboja bateriju
-  ; narancasto da je ne mora vise istraziti.
-  if any? ciljevi in-radius 2 with [color = yellow] [
-    trazi-slobodnog-transportera [list xcor ycor] of ciljevi in-radius 2
-    ask ciljevi in-radius 2 [set color orange]
+  if any? ciljevi in-radius 1 with [color = yellow] [
+    let koord [list xcor ycor] of ciljevi in-radius 1
+    ask ciljevi in-radius 1 [set color orange] 
+    dodaj-namjeru "reset-transp" "true"
+    dodaj-namjeru (word "trazi-slobodnog-transportera " koord) "nasao-transportera"
   ]
-  ; prvi transporter koji odgovori dobije koordinate baterije 
-  ; koordinate se salju u sadrzaju i vrsta poruke je "lokacija-baterije" 
-  ; jednom kada ih posalje, istrazivac brise sve ostale ulazne poruke
-  ifelse not empty? ulazne-poruke [
-      let poruka dohvati-poruku
-      posalji dodaj-primatelja dohvati-posiljatelja poruka dodaj-sadrzaj dohvati-sadrzaj poruka stvori-poruku "lokacija-baterije"
-      set ulazne-poruke []
-    ] [stop]
+end
+
+to reset-transp
+  set imam-transportera 0
 end
 
 to trazi-slobodnog-transportera [ulaz]
-    ; kada nadje bateriju salje upit svim transporterima da li su slobodni s koordinatama baterije u 
-    ; sadrzaju
     let koord item 0 ulaz
     let x item 0 koord
     let y item 1 koord
-    set koord (list (x - 2) y) ; da transporteri stanu do baterije a ne u njoj
+    set koord (list x y)
     posalji-svim transporteri dodaj-sadrzaj koord stvori-poruku "slobodan?"
 end
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;;;; TRANSPORTER
+to osluskuj-poruke-is
+  let poruka 0
+  let vrsta 0
+  let id who
+  while [not empty? ulazne-poruke]
+  [
+    set poruka dohvati-poruku
+    set vrsta dohvati-vrstu poruka
+    if vrsta = "slobodan"[
+      set ulazne-poruke []
+      ;pop-intention
+      posalji dodaj-primatelja dohvati-posiljatelja poruka dodaj-sadrzaj dohvati-sadrzaj poruka stvori-poruku "lokacija-baterije" 
+      stop
+    ]
+    if vrsta = "idem-do-tebe" [
+      set imam-transportera imam-transportera + 1
+      set ulazne-poruke []
+    ]
+  ]
+end
+
+to-report nasao-transportera
+  ifelse imam-transportera = 1
+  [report true]
+  [report false]
+end
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;; TRANSPORTER
 
 to ponasanje-transportera
   osluskuj-poruke-tr
-  izvrsi-namjere
+  izvrsi-namjere-provjera
 end
 
 to osluskuj-poruke-tr
   let poruka 0
   let vrsta 0
+  let id who
   while [not empty? ulazne-poruke]
   [
     set poruka dohvati-poruku
     set vrsta dohvati-vrstu poruka
-    ; upit da li je transporter slobodan na sto odgovara da je
-    if vrsta = "slobodan?" and stanje = "slobodan" [posalji dodaj-primatelja dohvati-posiljatelja poruka dodaj-sadrzaj dohvati-sadrzaj poruka stvori-poruku "slobodan"]
-    ; dobivene su lokacije baterije i samim time je zadana namjera da se ode do lokacije 
-    ; stanje se mijenja u "zauzet"
+    if vrsta = "slobodan?" and stanje = "slobodan" [
+      posalji dodaj-primatelja dohvati-posiljatelja poruka dodaj-sadrzaj dohvati-sadrzaj poruka stvori-poruku "slobodan"
+      stop
+    ]
     if vrsta = "lokacija-baterije" [
       set stanje "zauzet"
-      ; zahtjev za mostom salje zahtjev i koordinate patcha ispred transportera gdje je potreban most
-      dodaj-namjeru (word "zahtjev-za-mostom " (list (item 0 dohvati-sadrzaj poruka + 1) item 1 dohvati-sadrzaj poruka)) (word "napravljen-most " dohvati-sadrzaj poruka)
-      dodaj-namjeru (word "idi-prema " dohvati-sadrzaj poruka) (word "na-odredistu " dohvati-sadrzaj poruka)
+      posalji dodaj-primatelja dohvati-posiljatelja poruka dodaj-sadrzaj dohvati-sadrzaj poruka stvori-poruku "idem-do-tebe"
+      let koord dohvati-sadrzaj poruka
+      let x (item 0 koord - 3)
+      let y item 1 koord
+      let rnd random 3
+      ifelse any? transporteri-at x y [
+        dodaj-namjeru "oslobodi-se" "oslobodjen"
       ]
+      [
+        dodaj-namjeru (word "zahtjev-za-most " (list (x + 2) y)) (word "zaposlen-graditelj " koord)
+        dodaj-namjeru (word "idi-prema-tr " (list x y)) (word "na-odredistu " (list x y))
+      ]
+      dodaj-namjeru (word "idi-prema-tr " (list (x - rnd) y)) (word "na-odredistu " (list (x - rnd) y))
+      set ulazne-poruke []
+      
+    ]
+    if vrsta = "slobodan" [
+      posalji dodaj-primatelja dohvati-posiljatelja poruka dodaj-sadrzaj dohvati-sadrzaj poruka stvori-poruku "gradi-most"
+      set ulazne-poruke []
+      ;pop-intention
+    ]
+    if vrsta = "gradim-ti-most" [
+      set imam-graditelja 1
+      set ulazne-poruke []
+    ]
+    if vrsta = "izgradjen-ti-most" [
+      set namjere []
+      show "izgradjen mi most"
+      let koord-bat (list (item 0 dohvati-sadrzaj poruka + 1) item 1 dohvati-sadrzaj poruka)
+      dodaj-namjeru "oslobodi-se" "oslobodjen"
+      dodaj-namjeru "ostavi-bateriju" "ostavljena-baterija"
+      dodaj-namjeru (word "idi-prema-tr " (list 20 20)) (word "na-odredistu " (list 20 20))
+      dodaj-namjeru (word "pokupi-bateriju " koord-bat) "baterija-pokupljena"
+      dodaj-namjeru (word "idi-prema-tr " koord-bat) (word "na-odredistu " koord-bat)
+    ]
   ]
 end
 
-to zahtjev-za-mostom [koord]
-  posalji dodaj-primatelja id-baze dodaj-sadrzaj koord stvori-poruku "zahtjev-most"
-end
-
-to-report napravljen-most [koord]
-  ifelse [pcolor] of patch (item 0 koord + 1) item 1 koord = blue
+to-report zaposlen-graditelj [koord]
+  ifelse not member? koord baterije [
+  ifelse imam-graditelja = 1 or [pcolor] of patch (item 0 koord - 1) item 1 koord = black
+  [report true]
   [report false]
-  [show (word "napravljen most za mene!" koord)
-    report true]
+  ]
+  [
+    dodaj-namjeru "oslobodi-se" "oslobodjen"
+    report true
+  ]
 end
 
+to ostavi-bateriju
+  set teret 0
+  set broj-ciljeva broj-ciljeva - 1
+end
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+to-report ostavljena-baterija
+  ifelse teret = 0
+  [report true]
+  [report false]  
+end
 
-;;;; BAZA
+to-report oslobodjen
+  ifelse stanje = "slobodan"
+  [report true]
+  [report false]
+end
+
+to-report baterija-pokupljena
+  ifelse teret = 1
+  [report true]
+  [report false]
+end
+
+to pokupi-bateriju [koord]
+  if any? ciljevi in-radius 1 [
+  ask ciljevi in-radius 1 [die]
+  set baterije fput koord baterije
+  set teret 1]
+  stop
+end
+
+to oslobodi-se
+  set teret 0
+  set stanje "slobodan"
+  set imam-graditelja 0
+  set namjere []
+  fd 2
+  stop
+end
+
+to zahtjev-za-most [koord]
+  posalji-svim graditelji dodaj-sadrzaj koord stvori-poruku "slobodan?"
+  stop
+end
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;; BAZA 
 
 to ponasanje-baze
-  
   osluskuj-poruke-bz
-  
+  stop
 end
 
 to osluskuj-poruke-bz
   let poruka 0
   let vrsta 0
+  let id who
   while [not empty? ulazne-poruke]
   [
     set poruka dohvati-poruku
     set vrsta dohvati-vrstu poruka
-    if vrsta = "zahtjev-most" [
-      ifelse empty? buffer [posalji poruka]
-       [ let slobodniGraditelj first buffer
-        posalji dodaj-primatelja (word slobodniGraditelj) dodaj-sadrzaj dohvati-sadrzaj poruka stvori-poruku "koord-mosta"
-        posalji dodaj-primatelja (word slobodniGraditelj) dodaj-sadrzaj dohvati-koord-stabla  stvori-poruku "posijeci-stablo"
-        posalji dodaj-primatelja (word slobodniGraditelj) dodaj-sadrzaj dohvati-koord-stabla  stvori-poruku "posijeci-stablo"
-        posalji dodaj-primatelja (word slobodniGraditelj) dodaj-sadrzaj dohvati-koord-stabla  stvori-poruku "posijeci-stablo"
-        set buffer but-first buffer]
-      ]
+    if vrsta = "zahtjev-za-stablima" [
+      if not empty? lista-stabala [
+        posalji dodaj-primatelja dohvati-posiljatelja poruka dodaj-sadrzaj item 0 lista-stabala stvori-poruku "koord-stabla"
+        set lista-stabala but-first lista-stabala]
+      
+    ]
   ]
 end
-  
-to-report dohvati-koord-stabla
-  let odgovor first lista-stabala
-  set lista-stabala but-first lista-stabala
-  report odgovor
-end
 
-to trazi-slobodnog-graditelja
-    posalji-svim graditelji dodaj-sadrzaj "" stvori-poruku "slobodan?"
-    stop
-end
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;; GRADITELJI 
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-;;;; GRADITELJ
 to ponasanje-graditelji
+  izvrsi-namjere-provjera
   osluskuj-poruke-gr
-  izvrsi-namjere
+
+  stop
 end
 
 to osluskuj-poruke-gr
@@ -274,83 +369,121 @@ to osluskuj-poruke-gr
   [
     set poruka dohvati-poruku
     set vrsta dohvati-vrstu poruka
-    if vrsta = "slobodan?" and stanje = "slobodan" [ask turtle id-baze [
-        set buffer fput id buffer
-        ]
-     ]
-    if vrsta = "koord-mosta" [
-      set stanje "zauzet"
-      dodaj-namjeru (word "napravi-most " dohvati-sadrzaj poruka) "true"
-      dodaj-namjeru (word "idi-prema " dohvati-sadrzaj poruka) (word "na-odredistu " dohvati-sadrzaj poruka)
-  ]
-    if vrsta = "posijeci-stablo" [
-      dodaj-namjeru (word "idi-prema " dohvati-sadrzaj poruka) (word "na-odredistu " dohvati-sadrzaj poruka)
-      dodaj-namjeru (word "posijeci-stablo") "true"
-  ]
+    if vrsta = "slobodan?" and stanje = "slobodan" [
+      let provjera dohvati-sadrzaj poruka
+      posalji dodaj-primatelja dohvati-posiljatelja poruka dodaj-sadrzaj dohvati-sadrzaj poruka stvori-poruku "slobodan"
+      set ulazne-poruke []
+    ]
     
+    if vrsta = "gradi-most" [
+      let provj dohvati-sadrzaj poruka
+      let tmp 0
+      ;set stanje "zauzet"
+      
+      if not member? provj mostovi
+      [      
+      set stanje "zauzet"
+      set narucilac dohvati-posiljatelja poruka
+      set koord-mosta dohvati-sadrzaj poruka
+      
+      posalji dodaj-primatelja dohvati-posiljatelja poruka dodaj-sadrzaj "" stvori-poruku "gradim-ti-most"
+      dodaj-namjeru "pokreni-transportera" "oslobodjen"
+      dodaj-namjeru "izgradnja-mosta" (word "izgradjen-most " koord-mosta)
+      dodaj-namjeru (word "idi-prema-gr " koord-mosta) (word "na-odredistu " koord-mosta)
+      dodaj-namjeru (word "trazi-koord-stabla") "dovoljno-drva"
+      
+      
+      set mostovi fput provj mostovi
+      ]
+      
+    
+    ]
+    if vrsta = "koord-stabla" [
+      dodaj-namjeru (word "posijeci-stablo") "posjeceno-stablo"
+      dodaj-namjeru (word "idi-prema-gr " dohvati-sadrzaj poruka) (word "na-odredistu " dohvati-sadrzaj poruka)
+    ]
+  ]
+end
 
-]
+to-report posjeceno-stablo
+  ifelse not any? stabla in-radius 0.7
+  [report true]
+  [report false]
+end
+
+to-report dovoljno-drva
+  ifelse teret < 3 and stanje = "zauzet"
+  [report false]
+  [report true]
+end
+
+to trazi-koord-stabla
+  posalji dodaj-primatelja id-baze dodaj-sadrzaj "" stvori-poruku "zahtjev-za-stablima"
+end
+
+to-report izgradjen-most [koord]
+  ifelse [pcolor] of patch item 0 koord item 1 koord = black
+  
+  [report true]
+  [report false]
+end
+
+to izgradnja-mosta
+  ask patch item 0 koord-mosta item 1 koord-mosta [set pcolor black]
+  set teret teret - 3
+  lt 180
+  fd 2
+  stop
+end
+
+to pokreni-transportera
+  posalji dodaj-primatelja narucilac dodaj-sadrzaj koord-mosta stvori-poruku "izgradjen-ti-most"
+
+  set ulazne-poruke []
+  set stanje "slobodan"
 end
 
 to posijeci-stablo
-  ask stabla in-radius 1 [die]
-  set teret teret + 1  
+
+      if any? stabla in-radius 0.7[
+        ask stabla in-radius 0.7 [die]
+        set teret teret + 1
+      ]  
+
+
 end
 
-to napravi-most [koord]
-  ask patch item 0 koord item 1 koord [set pcolor brown]
-end
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;; Zajednicke procedure
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-to pokret-nasumicno [tip]
+to pokret-nasumicno
+  
   fd 1
   set heading heading + random 30 - random 30
-  if tip = "istrazivac" [set put-istrazivaca put-istrazivaca + 1]
-  if tip = "graditelj" [set put-graditelja put-graditelja + 1]
-  if tip = "transporter" [set put-transportera put-transportera + 1]
 end
 
-to posalji-koord-stabla-bazi [poruka]
-  ask baze [
-    foreach poruka [set lista-stabala fput item 0 poruka lista-stabala]
-    set lista-stabala remove-duplicates lista-stabala
-    ]
+to zaobidji-prepreku
+  set heading heading + random 45
+end  
+
+to-report detektiraj-prepreku-tr
+  ifelse any? stabla in-cone 2 90 or any? graditelji in-cone 2 90 or any? other transporteri in-cone 2 90 
+  [report true]
+  [report false]
 end
 
-to posalji-bazi-baterije [poruka]
-  ask baze [
-    foreach poruka [set lista-baterija fput ? lista-baterija]
-    set lista-baterija remove-duplicates lista-baterija
-    ]
+to-report detektiraj-prepreku-gr
+  ifelse any? other graditelji in-cone 2 60 or any? transporteri in-cone 2 60
+  [report true]
+  [report false]
 end
 
-to posijeci [koord]
-  
-  set heading towardsxy-nowrap (first koord) (item 1 koord)
-  fd 1
-end
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;; Kopirane procedure
 
-to pokret [tip]
-  fd 1
-  if tip = "istrazivac" [set put-istrazivaca put-istrazivaca + 1]
-  if tip = "graditelj" [set put-graditelja put-graditelja + 1]
-  if tip = "transporter" [set put-transportera put-transportera + 1]  
-end
-
-;;; kopirane procedure
-to idi-prema [cilj]
+to idi-prema-tr [cilj]
+  ifelse detektiraj-prepreku-tr [zaobidji-prepreku]
+  [
    fd 1
    if is-number? cilj 
    [if not ((xcor = [xcor] of turtle cilj) and (ycor = [ycor] of turtle cilj))   
@@ -359,6 +492,23 @@ to idi-prema [cilj]
    if is-list? cilj 
    [if not ((xcor = first cilj) and (ycor = item 1 cilj)) 
      [set heading towardsxy-nowrap (first cilj) (item 1 cilj)] ];; ako mozemo u tom smjeru
+   
+  ]
+end 
+
+to idi-prema-gr [cilj]
+  ifelse detektiraj-prepreku-gr [zaobidji-prepreku]
+  [
+   fd 1
+   if is-number? cilj 
+   [if not ((xcor = [xcor] of turtle cilj) and (ycor = [ycor] of turtle cilj))   
+     [set heading towards-nowrap turtle cilj] ];; ako mozemo u tom smjeru
+ 
+   if is-list? cilj 
+   [if not ((xcor = first cilj) and (ycor = item 1 cilj)) 
+     [set heading towardsxy-nowrap (first cilj) (item 1 cilj)] ];; ako mozemo u tom smjeru
+   
+  ]
 end 
 
 to-report na-odredistu [cilj]
@@ -369,7 +519,7 @@ if is-number? cilj [
     ]
     
 if is-list? cilj [
- ifelse (abs (xcor - first cilj) < 0.7 ) and (abs (ycor - item 1 cilj) < 0.7)
+ ifelse (abs (xcor - first cilj) < 0.5 ) and (abs (ycor - item 1 cilj) < 0.5)
     [report true]
     [report false]
     ]
@@ -378,8 +528,6 @@ end
 to-report id-baze
   report first [who] of baze
 end
-
-;;; kraj kopiranih procedura
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; Pomocne procedure
@@ -401,8 +549,8 @@ GRAPHICS-WINDOW
 10
 1024
 574
-20
-20
+-1
+-1
 13.0
 1
 10
@@ -413,10 +561,10 @@ GRAPHICS-WINDOW
 1
 1
 1
--20
-20
--20
-20
+0
+40
+0
+40
 0
 0
 1
@@ -432,7 +580,7 @@ br-transportera
 br-transportera
 0
 20
-13
+8
 1
 1
 NIL
@@ -471,15 +619,15 @@ NIL
 HORIZONTAL
 
 SLIDER
-256
-250
-428
-283
+257
+249
+429
+282
 br-istrazivaca
 br-istrazivaca
 1
 20
-9
+20
 1
 1
 NIL
@@ -494,7 +642,7 @@ br-graditelja
 br-graditelja
 0
 20
-3
+5
 1
 1
 NIL
@@ -565,7 +713,7 @@ seed
 seed
 0
 100
-35
+85
 1
 1
 NIL
@@ -590,91 +738,15 @@ br-ciljeva
 br-ciljeva
 0
 10
-5
+10
 1
 1
 NIL
 HORIZONTAL
 
-MONITOR
-11
-303
-85
-348
-Istrazivac
-put-istrazivaca
-17
-1
-11
-
-MONITOR
-88
-304
-157
-349
-Graditelj
-put-graditelja
-17
-1
-11
-
-MONITOR
-10
-350
-102
-395
-Transporter
-put-transportera
-17
-1
-11
-
 @#$#@#$#@
 Inteligentni agenti - 2014
 PMFST
-
-ALGORITAM:
-- istraživač pretražuje svijet
--- šalje koordinate drva bazi
--- nađe bateriju
--- šalje koordinate slobodnom transporteru 
-- transporter dođe do koordinata baterije
--- zatraži od baze most
-- baza šalje zahtjev za most najbližem slobodnom graditelju
-- izabrani graditelj šalje zahtjev za najbližim drvima za most bazi
-- baza šalje koordinate najbližih drva graditelju
-- graditelj ih pokupi
--- dolazi do cilja
--- napravi most
--- postaje slobodan
-- transporter pokupi bateriju
--- prenese je do baze
--- postaje slobodan
-
-POTREBNE PROCEDURE:
-> istraživač:
-- pretrazuj-svijet
-- trazi-drva
-- posalji-koord-stabla-bazi
-- trazi-baterije
-- posalji-koord-baterije-transporteru (slobodan transporter)
-
-> transporter: (stanje:slobodan/zauzet)
-- idi-do [koord]
-- trazi-most
-- cekaj-most
-- pokupi-bateriju
-- predaj-bateriju
-
-> graditelj: (stanje:slobodan/zauzet)
-- trazi-koord-stabla
-- idi-do [koord]
-- posjeci-stablo
-- izgradi-most
-
-> baza: (lista-stabala)
-- nadji-najblizeg-graditelja [koord-cilja]
-- nadji-najblize-stablo [koord-graditelja]
 @#$#@#$#@
 default
 true

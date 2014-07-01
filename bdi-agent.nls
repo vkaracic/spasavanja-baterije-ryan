@@ -83,11 +83,22 @@ end
 ;;;;;;; METODE ZA UPRAVALJNJE NAMJERAMA
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+
+
 to izvrsi-namjere
   if empty? namjere [stop]
   let moja-nam dohvati-namjeru
   run ime-namjere moja-nam
   if runresult namjera-izvrsena moja-nam [ukloni-namjeru moja-nam]
+  if prikazi-namjere [set label namjere] ;; za provjeru
+end 
+
+to izvrsi-namjere-provjera
+  if empty? namjere [stop]
+  let moja-nam dohvati-namjeru
+  ifelse runresult namjera-izvrsena moja-nam [ukloni-namjeru moja-nam]
+  [run ime-namjere moja-nam]
+  
   if prikazi-namjere [set label namjere] ;; za provjeru
 end 
 
